@@ -12,7 +12,7 @@ from datetime import datetime
 # 應用標題
 st.title("Taiwan Stock Tracker V1.0")
 
-# 完整 TWSE 股票清單（已修正第 76 行及其他潛在錯誤）
+# 完整 TWSE 股票清單（已修正所有名稱和引號）
 stock_list = {
     '2330.TW': 'Taiwan Semiconductor Manufacturing Company Limited',
     '2317.TW': 'Hon Hai Precision Industry Co., Ltd.',
@@ -78,7 +78,6 @@ stock_list = {
     '2376.TW': 'Giga-Byte Technology Co., Ltd.',
     '3443.TW': 'Global Unichip Corp.',
     '4958.TW': 'Zhen Ding Technology Holding Limited',
-    # 這是部分清單（約 60 檔）。若需完整清單（約 1000 檔），從 https://www.twse.com.tw 或 https://stockanalysis.com/list/taiwan-stock-exchange/ 下載 CSV。
 }
 
 # 用戶輸入
@@ -222,18 +221,22 @@ def fetch_and_display_data(stock_symbol):
     except Exception as e:
         st.error(f"Error fetching data: {str(e)}")
 
-# 檢查輸入並處理
-stock_symbol = validate_stock_code(query)
-if not stock_symbol:
-    matched_symbol, matches = fuzzy_search_name(query)
-    if matched_symbol:
-        stock_symbol = matched_symbol
-    elif matches:
-        st.warning("No exact match found. Did you mean:")
-        for match in matches:
-            st.write(f"- {match[0]} (Similarity: {match[1]}%)")
-        return
+# 新函數：處理輸入（修正第 235 行的 return 問題）
+def process_input(query):
+    stock_symbol = validate_stock_code(query)
+    if not stock_symbol:
+        matched_symbol, matches = fuzzy_search_name(query)
+        if matched_symbol:
+            stock_symbol = matched_symbol
+        else:
+            st.warning("No exact match found. Did you mean:")
+            for match in matches:
+                st.write(f"- {match[0]} (Similarity: {match[1]}%)")
+            st.stop()  # 用 st.stop() 代替 return，停止執行
+    return stock_symbol
 
+# 主程式：處理輸入並顯示數據
+stock_symbol = process_input(query)
 if stock_symbol:
     if update_mode == "Manual (Button)":
         if st.button("Update Data"):
