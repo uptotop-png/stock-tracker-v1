@@ -80,6 +80,141 @@ stock_list = {
     '4958.TW': 'Zhen Ding Technology Holding Limited',
 }
 
-# 檢查機制 1：標準化與驗證股票代碼（移到前面，確保第 96 行能用）
+# 檢查機制 1：標準化與驗證股票代碼（縮排已修正）
 def validate_stock_code(query):
     if query.isdigit() and len(query) == 4:
+        query = f"{query}.TW"
+    if query in stock_list:
+        return query
+    try:
+        ticker = yf.Ticker(query)
+        info = ticker.info
+        if info.get('regularMarketPrice') is not None:
+            return query
+    except:
+        pass
+    return None
+
+# 檢查機制 2：模糊查詢股票名稱
+def fuzzy_search_name(query):
+    matches = process.extract(query, stock_list.values(), limit=3)
+    if matches and matches[0][1] > 80:  # 匹配度 > 80%
+        matched_name = matches[0][0]
+        return [k for k, v in stock_list.items() if v == matched_name][0]
+    else:
+        return None, matches
+
+# 資料庫初始化（包含投資清單表）
+def init_database(db_path):
+    try:
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        # 股票價格資料表
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS stock_data (
+                symbol TEXT,
+                date TEXT,
+                open REAL,
+                high REAL,
+                low REAL,
+                close REAL,
+                volume INTEGER
+            )
+        ''')
+        # 投資清單資料表
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS portfolio (
+                symbol TEXT PRIMARY KEY,
+                name TEXT,
+                quantity INTEGER
+            )
+        ''')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Database initialization failed: {str(e)}")
+
+# 儲存股票價格到資料庫
+def save_to_database(db_path, symbol, data):
+    try:
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        for index, row in data.iterrows():
+            date_str = index.strftime('%Y-%m-%d %H:%M:%S')
+            c.execute('''
+                INSERT OR REPLACE INTO stock_data (symbol, date, open, high, low, close, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (symbol, date_str, row['Open'], row['High'], row['Low'], row['Close'], row['Volume']))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Failed to save data to database: {str(e)}")
+
+# 從資料庫讀取股票價格
+def load_from_database(db_path, symbol):
+    try:
+        conn = sqlite3.connect(db_path)
+        query = f"SELECT * FROM stock_data WHERE symbol = ? ORDER BY date DESC LIMIT 100"
+        df = pd.read_sql_query(query, conn, params=(symbol,))
+        conn.close()
+        return df
+    except Exception as e:
+        st.error(f"Failed to load data from database: {str(e)}")
+        return pd.DataFrame()
+
+# 新增到投資清單
+def add_to_portfolio(db_path, symbol, name, quantity):
+    try:
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        c.execute('''
+            INSERT OR REPLACE INTO portfolio (symbol, name, quantity)
+            VALUES (?, ?, ?)
+        ''', (symbol, name, quantity))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Failed to add to portfolio: {str(e)}")
+
+# 從資料庫載入投資清單
+def load_portfolio(db_path):
+    try:
+        conn = sqlite3.connect(db_path)
+        query = "SELECT symbol, name, quantity FROM portfolio"
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        return df
+    except Exception as e:
+        st.error(f"Failed to load portfolio: {str(e)}")
+        return pd.DataFrame(columns=["symbol", "name", "quantity"])
+
+# 儲存編輯後的投資清單
+def save_portfolio_changes(db_path, edited_df):
+    try:
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        # 清空現有資料
+        c.execute("DELETE FROM portfolio")
+        # 儲存新資料
+        for _, row in edited_df.iterrows():
+            c.execute('''
+                INSERT INTO portfolio (symbol, name, quantity)
+                VALUES (?, ?, ?)
+            ''', (row['symbol'], row['name'], row['quantity']))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Failed to save portfolio changes: {str(e)}")
+
+# 抓取並顯示股票數據
+def fetch_and_display_data(stock_symbol):
+    try:
+        init_database(db_path)
+        ticker = yf.Ticker(stock_symbol)
+        info = ticker.info
+        intraday_data = yf.download(stock_symbol, period="1d", interval="1m")
+        history_data = yf.download(stock_symbol, period="1mo", interval="1d")
+        if intraday_data.empty or history_data.empty:
+            st.error("No data found for this symbol. Please check the symbol.")
+            return
+        save_to_database(db_path,
