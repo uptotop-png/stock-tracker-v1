@@ -12,7 +12,7 @@ from datetime import datetime
 # 應用標題
 st.title("Taiwan Stock Tracker V1.0")
 
-# 完整 TWSE 股票清單（已修正所有名稱和引號）
+# 完整 TWSE 股票清單
 stock_list = {
     '2330.TW': 'Taiwan Semiconductor Manufacturing Company Limited',
     '2317.TW': 'Hon Hai Precision Industry Co., Ltd.',
@@ -73,7 +73,7 @@ stock_list = {
     '2404.TW': 'United Integrated Services Co., Ltd.',
     '5871.TW': 'Chailease Holding Company Limited',
     '2449.TW': 'King Yuan Electronics Co., Ltd.',
-    '3665.TW': 'Bizlink Holding Inc.',  # 修正：完整名稱並加上引號
+    '3665.TW': 'Bizlink Holding Inc.',
     '4938.TW': 'Pegatron Corporation',
     '2376.TW': 'Giga-Byte Technology Co., Ltd.',
     '3443.TW': 'Global Unichip Corp.',
@@ -81,16 +81,32 @@ stock_list = {
 }
 
 # 用戶輸入
+st.header("Stock Price Tracker")
 query = st.text_input("Enter Stock Code (e.g., 2330) or Name (e.g., Taiwan Semiconductor)", value="2330")
 update_mode = st.radio("Update Mode", ("Manual (Button)", "Auto (Polling every 10 seconds)"))
 alert_price = st.number_input("Set Alert Price (TWD)", min_value=0.0, value=0.0, step=0.1)
 db_path = st.text_input("Database File Path", value="stock_data.db")
+
+# 投資清單輸入
+st.header("Manage Your Portfolio")
+new_stock_code = st.text_input("Add Stock Code (e.g., 2330)", key="new_stock")
+new_quantity = st.number_input("Add Quantity (Shares)", min_value=0, value=0, step=1)
+if st.button("Add to Portfolio"):
+    if new_stock_code:
+        stock_symbol = validate_stock_code(new_stock_code)
+        if stock_symbol and new_quantity > 0:
+            stock_name = stock_list.get(stock_symbol, stock_symbol)
+            add_to_portfolio(db_path, stock_symbol, stock_name, new_quantity)
+            st.success(f"Added {stock_name} ({stock_symbol}) with {new_quantity} shares to portfolio!")
+        else:
+            st.error("Invalid stock code or quantity. Please check and try again.")
 
 # 顯示佔位符
 info_placeholder = st.empty()
 chart_placeholder = st.empty()
 alert_placeholder = st.empty()
 db_placeholder = st.empty()
+portfolio_placeholder = st.empty()
 
 # 檢查機制 1：標準化與驗證股票代碼
 def validate_stock_code(query):
@@ -116,11 +132,12 @@ def fuzzy_search_name(query):
     else:
         return None, matches
 
-# 資料庫初始化
+# 資料庫初始化（包含投資清單表）
 def init_database(db_path):
     try:
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
+        # 股票價格資料表
         c.execute('''
             CREATE TABLE IF NOT EXISTS stock_data (
                 symbol TEXT,
@@ -132,12 +149,20 @@ def init_database(db_path):
                 volume INTEGER
             )
         ''')
+        # 投資清單資料表
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS portfolio (
+                symbol TEXT PRIMARY KEY,
+                name TEXT,
+                quantity INTEGER
+            )
+        ''')
         conn.commit()
         conn.close()
     except Exception as e:
         st.error(f"Database initialization failed: {str(e)}")
 
-# 儲存數據到資料庫
+# 儲存股票價格到資料庫
 def save_to_database(db_path, symbol, data):
     try:
         conn = sqlite3.connect(db_path)
@@ -153,7 +178,7 @@ def save_to_database(db_path, symbol, data):
     except Exception as e:
         st.error(f"Failed to save data to database: {str(e)}")
 
-# 從資料庫讀取數據
+# 從資料庫讀取股票價格
 def load_from_database(db_path, symbol):
     try:
         conn = sqlite3.connect(db_path)
@@ -165,7 +190,51 @@ def load_from_database(db_path, symbol):
         st.error(f"Failed to load data from database: {str(e)}")
         return pd.DataFrame()
 
-# 抓取並顯示數據
+# 新增到投資清單
+def add_to_portfolio(db_path, symbol, name, quantity):
+    try:
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        c.execute('''
+            INSERT OR REPLACE INTO portfolio (symbol, name, quantity)
+            VALUES (?, ?, ?)
+        ''', (symbol, name, quantity))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Failed to add to portfolio: {str(e)}")
+
+# 從資料庫載入投資清單
+def load_portfolio(db_path):
+    try:
+        conn = sqlite3.connect(db_path)
+        query = "SELECT symbol, name, quantity FROM portfolio"
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        return df
+    except Exception as e:
+        st.error(f"Failed to load portfolio: {str(e)}")
+        return pd.DataFrame(columns=["symbol", "name", "quantity"])
+
+# 儲存編輯後的投資清單
+def save_portfolio_changes(db_path, edited_df):
+    try:
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        # 清空現有資料
+        c.execute("DELETE FROM portfolio")
+        # 儲存新資料
+        for _, row in edited_df.iterrows():
+            c.execute('''
+                INSERT INTO portfolio (symbol, name, quantity)
+                VALUES (?, ?, ?)
+            ''', (row['symbol'], row['name'], row['quantity']))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Failed to save portfolio changes: {str(e)}")
+
+# 抓取並顯示股票數據
 def fetch_and_display_data(stock_symbol):
     try:
         init_database(db_path)
@@ -221,7 +290,7 @@ def fetch_and_display_data(stock_symbol):
     except Exception as e:
         st.error(f"Error fetching data: {str(e)}")
 
-# 新函數：處理輸入（修正第 235 行的 return 問題）
+# 新函數：處理輸入（修正之前的 return 問題）
 def process_input(query):
     stock_symbol = validate_stock_code(query)
     if not stock_symbol:
@@ -232,7 +301,7 @@ def process_input(query):
             st.warning("No exact match found. Did you mean:")
             for match in matches:
                 st.write(f"- {match[0]} (Similarity: {match[1]}%)")
-            st.stop()  # 用 st.stop() 代替 return，停止執行
+            st.stop()
     return stock_symbol
 
 # 主程式：處理輸入並顯示數據
@@ -246,9 +315,34 @@ if stock_symbol:
         time.sleep(10)
         st.rerun()
 
+# 顯示並編輯投資清單
+with portfolio_placeholder.container():
+    st.subheader("Your Portfolio")
+    portfolio_df = load_portfolio(db_path)
+    if not portfolio_df.empty:
+        edited_df = st.data_editor(
+            portfolio_df,
+            num_rows="dynamic",  # 允許新增和刪除列
+            column_config={
+                "symbol": st.column_config.TextColumn("Stock Code", disabled=True),
+                "name": st.column_config.TextColumn("Stock Name", disabled=True),
+                "quantity": st.column_config.NumberColumn("Quantity", min_value=0, step=1)
+            },
+            hide_index=True,
+            key="portfolio_editor"
+        )
+        if st.session_state.get("portfolio_editor", {}).get("edited_rows") or \
+           st.session_state.get("portfolio_editor", {}).get("added_rows") or \
+           st.session_state.get("portfolio_editor", {}).get("deleted_rows"):
+            save_portfolio_changes(db_path, edited_df)
+            st.success("Portfolio changes saved!")
+    else:
+        st.write("No stocks in portfolio yet. Add one above!")
+
 # 說明
 st.info("""
 This is Taiwan Stock Tracker V1.0! Enter a stock code (e.g., 2330) or name (e.g., Taiwan Semiconductor) to see prices and charts.
+Manage your portfolio by adding, editing, or deleting stocks with quantities.
 Data is stored in a database at the specified path (default: stock_data.db).
 For real-time data, consider paid APIs like TWSE or Finnhub.
 To run locally: pip install streamlit yfinance plotly pandas ta fuzzywuzzy; streamlit run app.py.
