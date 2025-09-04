@@ -142,8 +142,6 @@ def init_database(db_path):
 # 儲存股票價格到資料庫
 def save_to_database(db_path, symbol, data):
     try:
-        # 確保資料庫已初始化
-        init_database(db_path)
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
         for index, row in data.iterrows():
@@ -160,8 +158,6 @@ def save_to_database(db_path, symbol, data):
 # 從資料庫讀取股票價格
 def load_from_database(db_path, symbol):
     try:
-        # 確保資料庫已初始化
-        init_database(db_path)
         conn = sqlite3.connect(db_path)
         query = f"SELECT * FROM stock_data WHERE symbol = ? ORDER BY date DESC LIMIT 100"
         df = pd.read_sql_query(query, conn, params=(symbol,))
@@ -174,8 +170,6 @@ def load_from_database(db_path, symbol):
 # 新增到投資清單
 def add_to_portfolio(db_path, symbol, name, quantity):
     try:
-        # 確保資料庫已初始化
-        init_database(db_path)
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
         c.execute('''
@@ -190,8 +184,6 @@ def add_to_portfolio(db_path, symbol, name, quantity):
 # 從資料庫載入投資清單
 def load_portfolio(db_path):
     try:
-        # 確保資料庫已初始化
-        init_database(db_path)
         conn = sqlite3.connect(db_path)
         query = "SELECT symbol, name, quantity FROM portfolio"
         df = pd.read_sql_query(query, conn)
@@ -204,8 +196,6 @@ def load_portfolio(db_path):
 # 儲存編輯後的投資清單
 def save_portfolio_changes(db_path, edited_df):
     try:
-        # 確保資料庫已初始化
-        init_database(db_path)
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
         # 清空現有資料
@@ -224,7 +214,6 @@ def save_portfolio_changes(db_path, edited_df):
 # 抓取並顯示股票數據
 def fetch_and_display_data(stock_symbol):
     try:
-        # 確保資料庫已初始化
         init_database(db_path)
         ticker = yf.Ticker(stock_symbol)
         info = ticker.info
