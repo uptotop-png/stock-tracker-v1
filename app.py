@@ -80,68 +80,6 @@ stock_list = {
     '4958.TW': 'Zhen Ding Technology Holding Limited',
 }
 
-# 檢查機制 1：標準化與驗證股票代碼
+# 檢查機制 1：標準化與驗證股票代碼（移到前面，確保第 96 行能用）
 def validate_stock_code(query):
     if query.isdigit() and len(query) == 4:
-        query = f"{query}.TW"
-    if query in stock_list:
-        return query
-    try:
-        ticker = yf.Ticker(query)
-        info = ticker.info
-        if info.get('regularMarketPrice') is not None:
-            return query
-    except:
-        pass
-    return None
-
-# 檢查機制 2：模糊查詢股票名稱
-def fuzzy_search_name(query):
-    matches = process.extract(query, stock_list.values(), limit=3)
-    if matches and matches[0][1] > 80:  # 匹配度 > 80%
-        matched_name = matches[0][0]
-        return [k for k, v in stock_list.items() if v == matched_name][0]
-    else:
-        return None, matches
-
-# 資料庫初始化（包含投資清單表）
-def init_database(db_path):
-    try:
-        conn = sqlite3.connect(db_path)
-        c = conn.cursor()
-        # 股票價格資料表
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS stock_data (
-                symbol TEXT,
-                date TEXT,
-                open REAL,
-                high REAL,
-                low REAL,
-                close REAL,
-                volume INTEGER
-            )
-        ''')
-        # 投資清單資料表
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS portfolio (
-                symbol TEXT PRIMARY KEY,
-                name TEXT,
-                quantity INTEGER
-            )
-        ''')
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        st.error(f"Database initialization failed: {str(e)}")
-
-# 儲存股票價格到資料庫
-def save_to_database(db_path, symbol, data):
-    try:
-        conn = sqlite3.connect(db_path)
-        c = conn.cursor()
-        for index, row in data.iterrows():
-            date_str = index.strftime('%Y-%m-%d %H:%M:%S')
-            c.execute('''
-                INSERT OR REPLACE INTO stock_data (symbol, date, open, high, low, close, volume)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (symbol, date_str, row['Open'], row['High'], row['Low'], row['Close'], row['Volume

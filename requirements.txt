@@ -1,4 +1,4 @@
-streamlit
+textstreamlit
 yfinance
 pandas
 plotly
